@@ -23,6 +23,11 @@ function advanceAfterNight(
   const room = getRoom(roomId);
   if (!room) return;
 
+  // Track possessors before processing so we can detect role changes
+  const possessorsBefore = room.players
+    .filter((p) => p.role === Role.POSSESSOR && p.isAlive)
+    .map((p) => p.id);
+
   // Build confirmed actions map
   const confirmedActions: Record<string, string | null> = {};
   for (const [actorId, action] of Object.entries(room.nightActions)) {
@@ -59,6 +64,19 @@ function advanceAfterNight(
       collab.knownMafiaTeam = mafiaTeam;
       const collabSocket = io.sockets.sockets.get(collabId);
       collabSocket?.emit('contact_triggered', mafiaTeam);
+    }
+  }
+
+  // Notify possessor who inherited mafia body role
+  for (const possessorId of possessorsBefore) {
+    const updated = room.players.find((p) => p.id === possessorId);
+    if (updated && updated.role === Role.MAFIA) {
+      updated.knownMafiaTeam = mafiaTeam;
+      const possessorSocket = io.sockets.sockets.get(possessorId);
+      possessorSocket?.emit('role_updated', {
+        yourRole: Role.MAFIA,
+        mafiaTeam,
+      });
     }
   }
 

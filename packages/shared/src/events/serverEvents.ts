@@ -53,5 +53,11 @@ export interface ServerToClientEvents {
     reason: string;
   }) => void;
 
+  /** Sent to a player when their role changes mid-game (e.g. Possessor inheritance) */
+  role_updated: (payload: {
+    yourRole: Role;
+    mafiaTeam?: MafiaTeamMember[];
+  }) => void;
+
   error: (message: string) => void;
 }

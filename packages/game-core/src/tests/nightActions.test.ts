@@ -26,6 +26,12 @@ function makePlayer(
   };
 }
 
+/** Creates a stateful RNG that returns values in sequence (cycling). */
+function seqRng(...values: number[]): () => number {
+  let i = 0;
+  return () => values[i++ % values.length];
+}
+
 const settings: GameSettings = { ...DEFAULT_SETTINGS };
 
 describe('processNightActions', () => {
@@ -223,5 +229,124 @@ describe('processNightActions', () => {
     const actions = { m1: 'm2' }; // targeting own team
     const result = processNightActions(players, actions, settings, 1);
     expect(result.deaths).not.toContain('m2');
+  });
+
+  // ── Possessor inheritance tests ────────────────────────────────────────────
+
+  it('possessor inherits role from dead player on round 1', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('pos', Role.POSSESSOR),
+    ];
+    const actions = { m1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
+    expect(result.deaths).toContain('c1');
+    expect(pos.role).toBe(Role.CITIZEN);
+  });
+
+  it('possessor does not inherit if no deaths on round 1', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('d1', Role.DOCTOR),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('pos', Role.POSSESSOR),
+    ];
+    // Doctor saves the mafia target
+    const actions = { m1: 'c1', d1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
+    expect(result.deaths).toHaveLength(0);
+    expect(pos.role).toBe(Role.POSSESSOR);
+  });
+
+  it('possessor does not inherit on round > 1', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('pos', Role.POSSESSOR),
+    ];
+    const actions = { m1: 'c1' };
+    const result = processNightActions(players, actions, settings, 2);
+    const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
+    expect(result.deaths).toContain('c1');
+    expect(pos.role).toBe(Role.POSSESSOR);
+  });
+
+  it('possessor does not inherit if possessor is dead', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('pos', Role.POSSESSOR, { isAlive: false }),
+    ];
+    const actions = { m1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
+    expect(result.deaths).toContain('c1');
+    expect(pos.role).toBe(Role.POSSESSOR);
+  });
+
+  it('possessor selects among multiple deaths using deterministic RNG', () => {
+    // multiKillMode: m1→c1 and m2→pol both die.
+    // Fisher-Yates with seqRng(shuffleVal, possessorVal):
+    //   candidates (insertion order) = ['c1', 'pol']
+    //   i=1: j=floor(shuffleVal * 2)
+    //     shuffleVal=0 → j=0 → swap arr[0]&arr[1] → killTargets=['pol','c1'] → deaths=['pol','c1']
+    //   possessor idx = floor(possessorVal * 2)
+    //     possessorVal=0   → idx=0 → deaths[0]='pol' → POLICE
+    //     possessorVal=0.9 → idx=1 → deaths[1]='c1' → CITIZEN
+    const make = () => [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('m2', Role.MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('pol', Role.POLICE),
+      makePlayer('pos', Role.POSSESSOR),
+    ];
+    const ms: GameSettings = { ...settings, multiKillMode: true };
+    const actions = { m1: 'c1', m2: 'pol' };
+
+    const r0 = processNightActions(make(), actions, ms, 1, seqRng(0, 0));
+    const r1 = processNightActions(make(), actions, ms, 1, seqRng(0, 0.9));
+
+    const pos0 = r0.updatedPlayers.find((p) => p.id === 'pos')!;
+    const pos1 = r1.updatedPlayers.find((p) => p.id === 'pos')!;
+
+    expect(r0.deaths).toHaveLength(2);
+    expect(pos0.role).toBe(Role.POLICE);   // deaths[0] = pol
+    expect(pos1.role).toBe(Role.CITIZEN);  // deaths[1] = c1
+  });
+
+  it('possessor inherits CITIZEN if target was citizenized by Madam before death', () => {
+    // Madam breaks couple (both become CITIZEN), then mafia kills cp1
+    // Possessor should inherit CITIZEN (the role after Madam's effect)
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('md1', Role.MADAM),
+      makePlayer('cp1', Role.COUPLE, { isCouple: true, couplePairId: 'cp2' }),
+      makePlayer('cp2', Role.COUPLE, { isCouple: true, couplePairId: 'cp1' }),
+      makePlayer('pos', Role.POSSESSOR),
+    ];
+    // Madam breaks cp1's couple (citizenizes both), mafia kills cp1
+    const actions = { md1: 'cp1', m1: 'cp1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
+    // cp1 was citizenized before being killed, possessor must inherit CITIZEN
+    expect(result.deaths).toContain('cp1');
+    expect(pos.role).toBe(Role.CITIZEN);
+  });
+
+  it('possessor clears knownMafiaTeam on inheritance', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('pos', Role.POSSESSOR, {
+        knownMafiaTeam: [{ id: 'm1', nickname: 'm1', role: Role.MAFIA }],
+      }),
+    ];
+    const actions = { m1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
+    expect(pos.knownMafiaTeam).toBeNull();
   });
 });

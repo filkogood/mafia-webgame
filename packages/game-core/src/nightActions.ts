@@ -11,9 +11,13 @@ function clonePlayers(players: Player[]): Player[] {
   return players.map((p) => ({ ...p }));
 }
 
-function pickRandomTargets(targets: string[], count: number): string[] {
-  const shuffled = [...targets].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+function pickRandomTargets(targets: string[], count: number, rng: () => number): string[] {
+  const arr = [...targets];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, count);
 }
 
 function isMafiaTeam(player: Player): boolean {
@@ -31,7 +35,8 @@ export function processNightActions(
   players: Player[],
   confirmedActions: Record<string, string | null>,
   settings: GameSettings,
-  round: number
+  round: number,
+  rng: () => number = Math.random
 ): NightActionResult {
   const updated = clonePlayers(players);
   const byId = (id: string) => updated.find((p) => p.id === id);
@@ -119,14 +124,14 @@ export function processNightActions(
     if (settings.multiKillMode) {
       // 2 random unique targets
       const candidates = Object.keys(mafiaTargetVotes);
-      killTargets = pickRandomTargets(candidates, Math.min(2, candidates.length));
+      killTargets = pickRandomTargets(candidates, Math.min(2, candidates.length), rng);
     } else {
       // Most-voted target
       const maxVotes = Math.max(...Object.values(mafiaTargetVotes));
       const topTargets = Object.entries(mafiaTargetVotes)
         .filter(([, v]) => v === maxVotes)
         .map(([id]) => id);
-      killTargets = [topTargets[Math.floor(Math.random() * topTargets.length)]];
+      killTargets = [topTargets[Math.floor(rng() * topTargets.length)]];
     }
   }
 
@@ -170,6 +175,21 @@ export function processNightActions(
       if (p.role === Role.ROOKIE_MAFIA && !p.hasInheritedMafia && p.isAlive) {
         p.hasInheritedMafia = true;
         announcements.push(`${p.nickname}이(가) 마피아 역할을 계승했습니다.`);
+      }
+    }
+  }
+
+  // ── Possessor inheritance (first night only) ───────────────────────────────
+  if (round === 1 && deaths.length > 0) {
+    const possessor = updated.find(
+      (p) => p.role === Role.POSSESSOR && p.isAlive && !deaths.includes(p.id)
+    );
+    if (possessor) {
+      const idx = Math.floor(rng() * deaths.length);
+      const inheritedFrom = byId(deaths[idx]);
+      if (inheritedFrom) {
+        possessor.role = inheritedFrom.role;
+        possessor.knownMafiaTeam = null;
       }
     }
   }
