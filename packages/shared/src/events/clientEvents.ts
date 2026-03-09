@@ -1,4 +1,6 @@
 import { GameSettings } from '../types/game';
+import { Role } from '../types/roles';
+import { Phase } from '../types/phase';
 
 /** join_room payload */
 export interface JoinRoomPayload {
@@ -46,6 +48,34 @@ export interface GhostVote2CastPayload {
   choice: 'yes' | 'no';
 }
 
+/** dev:setScenario player patch entry */
+export interface DevScenarioPlayer {
+  id: string;
+  role?: Role;
+  isAlive?: boolean;
+  isDrunk?: boolean;
+  isHypnotized?: boolean;
+  isVoteBlocked?: boolean;
+  hasInheritedMafia?: boolean;
+  knownMafiaTeam?: Array<{ id: string; nickname: string; role: Role }> | null;
+}
+
+/** dev:setScenario scenario definition */
+export interface DevScenario {
+  phase?: Phase;
+  round?: number;
+  players?: DevScenarioPlayer[];
+  vote1Candidate?: string | null;
+  nightActions?: Record<string, { targetId: string | null }>;
+}
+
+/** dev:setScenario payload — only honoured in dev mode */
+export interface DevSetScenarioPayload {
+  roomId: string;
+  secret: string;
+  scenario: DevScenario;
+}
+
 export interface ClientToServerEvents {
   join_room: (payload: JoinRoomPayload) => void;
   create_room: (payload: CreateRoomPayload) => void;
@@ -58,4 +88,5 @@ export interface ClientToServerEvents {
   quick_finish: () => void;
   ghost_vote1_cast: (payload: GhostVote1CastPayload) => void;
   ghost_vote2_cast: (payload: GhostVote2CastPayload) => void;
+  'dev:setScenario': (payload: DevSetScenarioPayload) => void;
 }
