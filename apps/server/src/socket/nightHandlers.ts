@@ -14,6 +14,18 @@ import {
   checkContacts,
   checkWinCondition,
 } from '@mafia/game-core';
+import {
+  appendEvent,
+  finalizeRoomLog,
+  makePhaseTransition,
+  makeNightAction,
+  makeDeath,
+  makeRoleChange,
+  makeStatusEvent,
+  makeContactSuccess,
+  makeGameEnded,
+} from '../log/gameLog';
+import { persistGameLogs, pruneOldLogs, LOG_DIR, LOG_KEEP_LAST_N } from '../log/logStore';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -69,6 +81,9 @@ function advanceAfterNight(
     .filter((p) => p.role === Role.POSSESSOR && p.isAlive)
     .map((p) => p.id);
 
+  // Snapshot player states before processing for status-effect diffing
+  const playersBefore = room.players.map((p) => ({ ...p }));
+
   // Build confirmed actions map; players who submitted no action are absent and
   // treated as null by processNightActions (confirmedActions[actor.id] ?? null)
   const confirmedActions: Record<string, string | null> = {};
@@ -84,6 +99,40 @@ function advanceAfterNight(
   );
 
   room.players = result.updatedPlayers;
+
+  // Log confirmed night actions (non-null targets only)
+  for (const [actorId, targetId] of Object.entries(confirmedActions)) {
+    if (targetId === null) continue;
+    const actor = playersBefore.find((p) => p.id === actorId);
+    const target = playersBefore.find((p) => p.id === targetId);
+    if (actor && target) {
+      appendEvent(roomId, makeNightAction(actor, target, room.round));
+    }
+  }
+
+  // Log new status effects (drunk, vote-blocked, hypnotized)
+  for (const after of room.players) {
+    const before = playersBefore.find((p) => p.id === after.id);
+    if (!before) continue;
+    if (!before.isDrunk && after.isDrunk) {
+      const actor = playersBefore.find(
+        (p) => p.role === Role.MADAM && confirmedActions[p.id] === after.id
+      );
+      appendEvent(roomId, makeStatusEvent('status_applied', after, 'drunk', room.round, 'NIGHT', actor));
+    }
+    if (!before.isVoteBlocked && after.isVoteBlocked) {
+      const actor = playersBefore.find(
+        (p) => p.role === Role.BURGLAR && confirmedActions[p.id] === after.id
+      );
+      appendEvent(roomId, makeStatusEvent('status_applied', after, 'vote_blocked', room.round, 'NIGHT', actor));
+    }
+    if (!before.isHypnotized && after.isHypnotized) {
+      const actor = playersBefore.find(
+        (p) => p.role === Role.CULT_MONK && confirmedActions[p.id] === after.id
+      );
+      appendEvent(roomId, makeStatusEvent('status_applied', after, 'hypnotized', room.round, 'NIGHT', actor));
+    }
+  }
 
   // Check contacts
   const contactedCollabIds = checkContacts(room.players, confirmedActions);
@@ -101,6 +150,7 @@ function advanceAfterNight(
       collab.knownMafiaTeam = mafiaTeam;
       const collabSocket = io.sockets.sockets.get(collabId);
       collabSocket?.emit('contact_triggered', mafiaTeam);
+      appendEvent(roomId, makeContactSuccess(collab, room.round));
     }
   }
 
@@ -122,6 +172,10 @@ function advanceAfterNight(
   for (const possessorId of possessorsBefore) {
     const updated = room.players.find((p) => p.id === possessorId);
     if (updated && updated.role === Role.MAFIA) {
+      const before = playersBefore.find((p) => p.id === possessorId);
+      if (before) {
+        appendEvent(roomId, makeRoleChange(updated, before.role, Role.MAFIA, room.round, 'possessor_inheritance'));
+      }
       updated.knownMafiaTeam = mafiaTeam;
       const possessorSocket = io.sockets.sockets.get(possessorId);
       possessorSocket?.emit('role_updated', {
@@ -131,7 +185,7 @@ function advanceAfterNight(
     }
   }
 
-  // Announce deaths
+  // Announce deaths and log them
   for (const deadId of result.deaths) {
     const dead = room.players.find((p) => p.id === deadId);
     if (!dead) continue;
@@ -146,6 +200,7 @@ function advanceAfterNight(
       'announcement',
       `${dead.nickname}님이 사망했습니다.${roleInfo}`
     );
+    appendEvent(roomId, makeDeath(dead, room.round, 'NIGHT', 'mafia_kill'));
   }
 
   for (const msg of result.announcements) {
@@ -163,6 +218,15 @@ function advanceAfterNight(
   if (winResult.winner) {
     room.phase = Phase.ENDED;
     updateRoom(room);
+    appendEvent(roomId, makeGameEnded(winResult.winner, winResult.reason, room.round, 'NIGHT', room.players));
+    appendEvent(roomId, makePhaseTransition(Phase.NIGHT, Phase.ENDED, room.round));
+    const { full, public: pub } = finalizeRoomLog(room);
+    try {
+      persistGameLogs(pub, full);
+      pruneOldLogs(LOG_DIR, LOG_KEEP_LAST_N);
+    } catch (err) {
+      console.error('[log] Failed to persist game logs:', err);
+    }
     io.to(room.id).emit('game_ended', {
       winner: winResult.winner,
       reason: winResult.reason,
@@ -171,6 +235,7 @@ function advanceAfterNight(
   }
 
   // Advance to DAY
+  appendEvent(roomId, makePhaseTransition(Phase.NIGHT, Phase.DAY, room.round));
   room.phase = Phase.DAY;
   room.nightActions = {};
   room.quickFinishVotes = [];

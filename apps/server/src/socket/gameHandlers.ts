@@ -13,6 +13,7 @@ import { getRoom, updateRoom, findRoomByPlayerId } from '../state/roomStore';
 import { getPreset } from '@mafia/game-core';
 import { checkWinCondition } from '@mafia/game-core';
 import { scheduleNightTimer } from './nightHandlers';
+import { initRoomLog, appendEvent, makePhaseTransition } from '../log/gameLog';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -83,6 +84,10 @@ export function registerGameHandlers(
     room.nightActions = {};
     room.quickFinishVotes = [];
     updateRoom(room);
+
+    // Initialise log for this game
+    initRoomLog(room);
+    appendEvent(room.id, makePhaseTransition(Phase.LOBBY, Phase.NIGHT, 1));
 
     // Build mafia team info
     const mafiaTeam = room.players
