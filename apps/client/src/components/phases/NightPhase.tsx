@@ -54,9 +54,14 @@ export default function NightPhase() {
     (myRole === Role.ROOKIE_MAFIA && me.hasInheritedMafia);
 
   const handlePreview = (targetId: string) => {
-    if (confirmed) return;
-    setPreviewTarget(targetId);
-    socket.emit('night_preview', { targetId });
+    // Toggle: clicking the same player deselects; clicking a new player selects
+    const newTarget = previewTarget === targetId ? null : targetId;
+    setPreviewTarget(newTarget);
+    socket.emit('night_preview', { targetId: newTarget });
+    if (confirmed) {
+      // Re-confirm immediately with updated selection
+      socket.emit('night_confirm', { targetId: newTarget });
+    }
   };
 
   const handleConfirm = () => {
@@ -74,7 +79,7 @@ export default function NightPhase() {
       <RoleCard role={myRole} />
       <Timer seconds={roomState.settings.nightTimerSec} label="남은 시간" />
 
-      {canAct && !confirmed && (
+      {canAct && (
         <div style={{ marginTop: 12 }}>
           <h4>대상 선택</h4>
           {alivePlayers.map((p) => (
@@ -97,20 +102,22 @@ export default function NightPhase() {
               {p.nickname}
             </button>
           ))}
-          <button
-            onClick={handleConfirm}
-            style={{
-              marginTop: 8,
-              padding: '8px 20px',
-              background: '#333',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >
-            {previewTarget ? '확정' : '행동 안함'}
-          </button>
+          {!confirmed && (
+            <button
+              onClick={handleConfirm}
+              style={{
+                marginTop: 8,
+                padding: '8px 20px',
+                background: '#333',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              {previewTarget ? '확정' : '행동 안함'}
+            </button>
+          )}
         </div>
       )}
       {confirmed && (

@@ -10,6 +10,7 @@ import {
 import { getRoom, updateRoom, findRoomByPlayerId } from '../state/roomStore';
 import { getPreset } from '@mafia/game-core';
 import { checkWinCondition } from '@mafia/game-core';
+import { scheduleNightTimer } from './nightHandlers';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -106,6 +107,7 @@ export function registerGameHandlers(
       phase: Phase.NIGHT,
       round: room.round,
     });
+    scheduleNightTimer(io, room.id);
   });
 
   socket.on('quick_finish', () => {

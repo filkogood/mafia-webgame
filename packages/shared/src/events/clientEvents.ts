@@ -18,7 +18,7 @@ export interface UpdateSettingsPayload {
 
 /** night_preview payload */
 export interface NightPreviewPayload {
-  targetId: string;
+  targetId: string | null;
 }
 
 /** night_confirm payload */
