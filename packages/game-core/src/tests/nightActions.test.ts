@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { processNightActions } from '../nightActions';
+import { processNightActions, clearHypnotizedAtVote2Start } from '../nightActions';
+import { checkContacts } from '../contactSystem';
 import { Player, Role, DEFAULT_SETTINGS, GameSettings } from '@mafia/shared';
 
 function makePlayer(
@@ -18,6 +19,8 @@ function makePlayer(
     drunkExpiresAfterVote2: null,
     isVoteBlocked: false,
     voteBlockExpiresAfterVote2: null,
+    isHypnotized: false,
+    hypnotizedExpiresAtVote2: null,
     hasInheritedMafia: false,
     knownMafiaTeam: null,
     ghostVotesUsedVote1: false,
@@ -562,5 +565,126 @@ describe('processNightActions', () => {
     const result = processNightActions(players, actions, settings, 1);
     const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
     expect(notif).toBeUndefined();
+  });
+});
+
+describe('Hypnotist (CULT_MONK)', () => {
+  it('applying hypnotized: sets isHypnotized=true and hypnotizedExpiresAtVote2', () => {
+    const players = [
+      makePlayer('cm1', Role.CULT_MONK),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { cm1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const c1 = result.updatedPlayers.find((p) => p.id === 'c1')!;
+    expect(c1.isHypnotized).toBe(true);
+    expect(c1.hypnotizedExpiresAtVote2).toBe(1);
+  });
+
+  it('null target does nothing', () => {
+    const players = [
+      makePlayer('cm1', Role.CULT_MONK),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { cm1: null };
+    const result = processNightActions(players, actions, settings, 1);
+    const c1 = result.updatedPlayers.find((p) => p.id === 'c1')!;
+    expect(c1.isHypnotized).toBe(false);
+    expect(c1.hypnotizedExpiresAtVote2).toBeNull();
+  });
+
+  it('self-targeting is allowed', () => {
+    const players = [
+      makePlayer('cm1', Role.CULT_MONK),
+    ];
+    const actions = { cm1: 'cm1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const cm1 = result.updatedPlayers.find((p) => p.id === 'cm1')!;
+    expect(cm1.isHypnotized).toBe(true);
+  });
+
+  it('refreshing duration via re-application updates hypnotizedExpiresAtVote2', () => {
+    // Round 1: hypnotize c1
+    const players = [
+      makePlayer('cm1', Role.CULT_MONK),
+      makePlayer('c1', Role.CITIZEN, { isHypnotized: true, hypnotizedExpiresAtVote2: 1 }),
+    ];
+    const actions = { cm1: 'c1' };
+    // Round 2: hypnotize again, should refresh to round 2
+    const result = processNightActions(players, actions, settings, 2);
+    const c1 = result.updatedPlayers.find((p) => p.id === 'c1')!;
+    expect(c1.isHypnotized).toBe(true);
+    expect(c1.hypnotizedExpiresAtVote2).toBe(2);
+  });
+
+  it('coexistence with drunk: both isHypnotized and isDrunk can be true', () => {
+    const players = [
+      makePlayer('cm1', Role.CULT_MONK),
+      makePlayer('md1', Role.MADAM),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { cm1: 'c1', md1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const c1 = result.updatedPlayers.find((p) => p.id === 'c1')!;
+    expect(c1.isHypnotized).toBe(true);
+    expect(c1.isDrunk).toBe(true);
+  });
+
+  it('clearing hypnotized does not clear drunk', () => {
+    const players = [
+      makePlayer('c1', Role.CITIZEN, {
+        isHypnotized: true,
+        hypnotizedExpiresAtVote2: 1,
+        isDrunk: true,
+        drunkExpiresAfterVote2: 1,
+      }),
+    ];
+    const cleared = clearHypnotizedAtVote2Start(players, 1);
+    const c1 = cleared.find((p) => p.id === 'c1')!;
+    expect(c1.isHypnotized).toBe(false);
+    expect(c1.hypnotizedExpiresAtVote2).toBeNull();
+    expect(c1.isDrunk).toBe(true);
+    expect(c1.drunkExpiresAfterVote2).toBe(1);
+  });
+
+  it('clearHypnotizedAtVote2Start clears status for the matching round', () => {
+    const players = [
+      makePlayer('c1', Role.CITIZEN, { isHypnotized: true, hypnotizedExpiresAtVote2: 2 }),
+      makePlayer('c2', Role.CITIZEN, { isHypnotized: true, hypnotizedExpiresAtVote2: 1 }),
+    ];
+    const cleared = clearHypnotizedAtVote2Start(players, 2);
+    expect(cleared.find((p) => p.id === 'c1')!.isHypnotized).toBe(false);
+    // c2 was set to expire at round 1; round 2 clear pass does not clear it
+    expect(cleared.find((p) => p.id === 'c2')!.isHypnotized).toBe(true);
+  });
+
+  it('hypnotized expires at next night when round advances (no VOTE2)', () => {
+    // c1 was hypnotized in round 1, now processNightActions is called for round 2
+    const players = [
+      makePlayer('cm1', Role.CULT_MONK),
+      makePlayer('c1', Role.CITIZEN, { isHypnotized: true, hypnotizedExpiresAtVote2: 1 }),
+    ];
+    const actions: Record<string, string | null> = { cm1: null };
+    const result = processNightActions(players, actions, settings, 2);
+    const c1 = result.updatedPlayers.find((p) => p.id === 'c1')!;
+    expect(c1.isHypnotized).toBe(false);
+    expect(c1.hypnotizedExpiresAtVote2).toBeNull();
+  });
+
+  it('contact rule: hypnotist targeting MAFIA body triggers contact', () => {
+    const mafia = makePlayer('m1', Role.MAFIA);
+    const hypnotist = makePlayer('cm1', Role.CULT_MONK);
+    const actions: Record<string, string | null> = { cm1: 'm1' };
+    const triggered = checkContacts([mafia, hypnotist], actions);
+    expect(triggered).toContain('cm1');
+  });
+
+  it('contact rule: hypnotist targeting non-mafia does not trigger contact', () => {
+    const mafia = makePlayer('m1', Role.MAFIA);
+    const hypnotist = makePlayer('cm1', Role.CULT_MONK);
+    const citizen = makePlayer('c1', Role.CITIZEN);
+    const actions: Record<string, string | null> = { cm1: 'c1' };
+    const triggered = checkContacts([mafia, hypnotist, citizen], actions);
+    expect(triggered).not.toContain('cm1');
   });
 });

@@ -61,6 +61,8 @@ export function registerGameHandlers(
       player.drunkExpiresAfterVote2 = null;
       player.isVoteBlocked = false;
       player.voteBlockExpiresAfterVote2 = null;
+      player.isHypnotized = false;
+      player.hypnotizedExpiresAtVote2 = null;
       player.hasInheritedMafia = false;
       player.knownMafiaTeam = null;
       player.ghostVotesUsedVote1 = false;

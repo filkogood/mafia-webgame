@@ -29,7 +29,7 @@ export const RoleKoreanName: Record<Role, string> = {
   [Role.HACKER]: '해커',
   [Role.MADAM]: '마담',
   [Role.BURGLAR]: '빈집털이범',
-  [Role.CULT_MONK]: '사이비스님',
+  [Role.CULT_MONK]: '최면술사',
   [Role.CITIZEN]: '시민',
   [Role.ANDROID]: '안드로이드',
   [Role.DOCTOR]: '의사',

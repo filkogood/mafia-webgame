@@ -19,6 +19,21 @@ export default function DayPhase() {
     <div>
       <h2>☀️ 낮 ({roomState.round}라운드)</h2>
       <Timer seconds={roomState.settings.dayTimerSec} label="남은 시간" />
+      {me?.isHypnotized && (
+        <div
+          style={{
+            background: '#4a0080',
+            color: '#fff',
+            padding: '10px 16px',
+            borderRadius: 6,
+            marginBottom: 12,
+            fontWeight: 'bold',
+            textAlign: 'center',
+          }}
+        >
+          당신은 지금 말을 할 수 없습니다. 말을 해서는 안됩니다.
+        </div>
+      )}
       <AnnouncementBanner />
       <PlayerList />
       {isAlive && roomState.settings.allowQuickFinish && (
