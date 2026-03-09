@@ -104,6 +104,20 @@ function advanceAfterNight(
     }
   }
 
+  // Notify Android players that were visited by a Hacker
+  for (const visit of result.visits) {
+    const visitor = room.players.find((p) => p.id === visit.fromId);
+    const visited = room.players.find((p) => p.id === visit.toId);
+    if (!visitor || !visited) continue;
+    if (visitor.role === Role.HACKER && visited.role === Role.ANDROID) {
+      const androidSocket = io.sockets.sockets.get(visited.id);
+      androidSocket?.emit('hacker_visited', {
+        hackerId: visitor.id,
+        hackerNickname: visitor.nickname,
+      });
+    }
+  }
+
   // Notify possessor who inherited mafia body role
   for (const possessorId of possessorsBefore) {
     const updated = room.players.find((p) => p.id === possessorId);

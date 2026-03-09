@@ -54,6 +54,12 @@ export default function App() {
 
     socket.on('error', (msg) => alert(msg));
 
+    socket.on('hacker_visited', ({ hackerNickname }) => {
+      addAnnouncement(
+        `🤖 [개인] 해커 '${hackerNickname}'이(가) 당신을 방문했습니다!`
+      );
+    });
+
     return () => {
       socket.off('room_state');
       socket.off('game_started');
@@ -63,6 +69,7 @@ export default function App() {
       socket.off('player_died');
       socket.off('game_ended');
       socket.off('error');
+      socket.off('hacker_visited');
     };
   }, []);
 

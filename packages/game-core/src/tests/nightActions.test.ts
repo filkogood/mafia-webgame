@@ -349,4 +349,61 @@ describe('processNightActions', () => {
     const pos = result.updatedPlayers.find((p) => p.id === 'pos')!;
     expect(pos.knownMafiaTeam).toBeNull();
   });
+
+  // ── Android immunity tests ─────────────────────────────────────────────────
+
+  it('android is immune to mafia night kill', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('a1', Role.ANDROID),
+    ];
+    const actions = { m1: 'a1' };
+    const result = processNightActions(players, actions, settings, 1);
+    expect(result.deaths).not.toContain('a1');
+    expect(result.updatedPlayers.find((p) => p.id === 'a1')?.isAlive).toBe(true);
+  });
+
+  it('madam targeting android does not apply drunk', () => {
+    const players = [
+      makePlayer('md1', Role.MADAM),
+      makePlayer('a1', Role.ANDROID),
+    ];
+    const actions = { md1: 'a1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const a1 = result.updatedPlayers.find((p) => p.id === 'a1')!;
+    expect(a1.isDrunk).toBe(false);
+  });
+
+  it('visit tracking includes hacker->android when hacker targets android', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER),
+      makePlayer('a1', Role.ANDROID),
+    ];
+    const actions = { h1: 'a1' };
+    const result = processNightActions(players, actions, settings, 1);
+    expect(result.visits).toContainEqual({ fromId: 'h1', toId: 'a1' });
+  });
+
+  it('visit tracking empty when hacker has no target', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { h1: null };
+    const result = processNightActions(players, actions, settings, 1);
+    expect(result.visits).toHaveLength(0);
+  });
+
+  it('visit tracking only includes hacker visits, not other roles', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('h1', Role.HACKER),
+      makePlayer('c1', Role.CITIZEN),
+      makePlayer('a1', Role.ANDROID),
+    ];
+    const actions = { m1: 'c1', h1: 'a1' };
+    const result = processNightActions(players, actions, settings, 1);
+    expect(result.visits).toHaveLength(1);
+    expect(result.visits[0]).toEqual({ fromId: 'h1', toId: 'a1' });
+  });
 });

@@ -5,6 +5,8 @@ export interface NightActionResult {
   healedPlayers: string[];
   announcements: string[];
   updatedPlayers: Player[];
+  /** Night visits: each entry means fromId's role visited toId that night. */
+  visits: Array<{ fromId: string; toId: string }>;
 }
 
 function clonePlayers(players: Player[]): Player[] {
@@ -52,6 +54,9 @@ export function processNightActions(
     if (!targetId) continue;
     const target = byId(targetId);
     if (!target) continue;
+
+    // Android is immune to Madam's abilities
+    if (target.role === Role.ANDROID) continue;
 
     if (target.isCouple) {
       // Break couple status for both partners and citizenize both
@@ -140,6 +145,9 @@ export function processNightActions(
     const target = byId(targetId);
     if (!target || !target.isAlive) continue;
 
+    // Android is absolutely immune to mafia night kill
+    if (target.role === Role.ANDROID) continue;
+
     if (savedIds.has(targetId)) {
       healedPlayers.push(targetId);
       continue;
@@ -151,6 +159,8 @@ export function processNightActions(
       if (partner && partner.isAlive) {
         if (savedIds.has(partner.id)) {
           healedPlayers.push(partner.id);
+        } else if (partner.role === Role.ANDROID) {
+          // Android partner is immune – shield absorbs the kill, nobody dies
         } else {
           partner.isAlive = false;
           deaths.push(partner.id);
@@ -215,5 +225,13 @@ export function processNightActions(
     }
   }
 
-  return { deaths, healedPlayers, announcements, updatedPlayers: updated };
+  // ── Compute visits: Hacker targeting a player counts as a visit ───────────
+  const visits: Array<{ fromId: string; toId: string }> = [];
+  for (const actor of updated) {
+    if (!actor.isAlive || actor.role !== Role.HACKER) continue;
+    const targetId = confirmedActions[actor.id] ?? null;
+    if (targetId) visits.push({ fromId: actor.id, toId: targetId });
+  }
+
+  return { deaths, healedPlayers, announcements, updatedPlayers: updated, visits };
 }

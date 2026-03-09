@@ -60,4 +60,7 @@ export interface ServerToClientEvents {
   }) => void;
 
   error: (message: string) => void;
+
+  /** Sent privately to Android when a Hacker visits them at night */
+  hacker_visited: (payload: { hackerId: string; hackerNickname: string }) => void;
 }
