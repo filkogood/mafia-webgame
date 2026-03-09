@@ -49,14 +49,19 @@ export function processNightActions(
     if (!target) continue;
 
     if (target.isCouple) {
-      // Break couple status for both partners
+      // Break couple status for both partners and citizenize both
       target.isCouple = false;
       target.isDrunk = false;
+      target.drunkExpiresAfterVote2 = null;
+      target.role = Role.CITIZEN;
       if (target.couplePairId) {
         const partner = byId(target.couplePairId);
         if (partner) {
           partner.isCouple = false;
           partner.couplePairId = null;
+          partner.isDrunk = false;
+          partner.drunkExpiresAfterVote2 = null;
+          partner.role = Role.CITIZEN;
         }
       }
       target.couplePairId = null;
@@ -84,7 +89,10 @@ export function processNightActions(
   for (const actor of updated) {
     if (actor.role !== Role.DOCTOR || !actor.isAlive) continue;
     const targetId = confirmedActions[actor.id] ?? null;
-    if (targetId) savedIds.add(targetId);
+    if (!targetId) continue;
+    // Self-heal rule: allowed any round when toggle is on, only round 1 when off
+    if (targetId === actor.id && !settings.doctorSelfHealEnabled && round > 1) continue;
+    savedIds.add(targetId);
   }
 
   // ── Mafia: collect kill targets ────────────────────────────────────────────
