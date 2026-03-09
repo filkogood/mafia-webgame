@@ -11,6 +11,8 @@ export interface JoinRoomPayload {
 /** create_room payload */
 export interface CreateRoomPayload {
   nickname: string;
+  /** Admin session token – required to create a room */
+  adminToken?: string;
 }
 
 /** update_settings payload */

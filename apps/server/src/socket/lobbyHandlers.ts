@@ -7,6 +7,7 @@ import {
   Role,
 } from '@mafia/shared';
 import { createRoom, getRoom, updateRoom, findRoomByPlayerId } from '../state/roomStore';
+import { isValidAdminSession } from '../auth/adminAuth';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -18,9 +19,14 @@ export function registerLobbyHandlers(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   socket: AppSocket
 ) {
-  socket.on('create_room', ({ nickname }) => {
+  socket.on('create_room', ({ nickname, adminToken }) => {
     if (!nickname || nickname.trim().length === 0) {
       socket.emit('error', '닉네임을 입력해주세요.');
+      return;
+    }
+
+    if (!isValidAdminSession(adminToken)) {
+      socket.emit('error', '방 생성은 관리자만 가능합니다. 관리자 로그인이 필요합니다.');
       return;
     }
 

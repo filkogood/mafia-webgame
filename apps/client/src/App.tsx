@@ -4,6 +4,7 @@ import socket from './socket';
 import { useGameStore } from './store/gameStore';
 import LobbyPage from './pages/LobbyPage';
 import RoomPage from './pages/RoomPage';
+import AdminPage from './pages/AdminPage';
 import NightPhase from './components/phases/NightPhase';
 import DayPhase from './components/phases/DayPhase';
 import Vote1Phase from './components/phases/Vote1Phase';
@@ -23,6 +24,7 @@ export default function App() {
     useGameStore();
 
   const [showDev, setShowDev] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   useEffect(() => {
     socket.on('room_state', (room) => setRoomState(room));
@@ -101,6 +103,10 @@ export default function App() {
     );
   }
 
+  if (showAdmin) {
+    return <AdminPage onBack={() => setShowAdmin(false)} />;
+  }
+
   const devToggle = IS_DEV ? (
     <button
       onClick={() => setShowDev(true)}
@@ -127,7 +133,7 @@ export default function App() {
   if (!roomState || !myPlayerId) {
     return (
       <>
-        <LobbyPage />
+        <LobbyPage onShowAdmin={() => setShowAdmin(true)} />
         {devToggle}
       </>
     );
