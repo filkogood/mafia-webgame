@@ -19,7 +19,7 @@ export default function AdminPage({ onBack }: { onBack: () => void }) {
         // we can't recover the token – user must re-login.
         if (!isAdmin && adminToken) setAdminToken(null);
       })
-      .catch(() => {/* ignore */})
+      .catch((err) => console.error('[admin] session check failed:', err))
       .finally(() => setChecking(false));
   }, []);
 
@@ -52,7 +52,7 @@ export default function AdminPage({ onBack }: { onBack: () => void }) {
     await fetch(`${SERVER}/admin/logout`, {
       method: 'POST',
       credentials: 'include',
-    }).catch(() => {/* ignore */});
+    }).catch((err) => console.error('[admin] logout failed:', err));
     setAdminToken(null);
   };
 

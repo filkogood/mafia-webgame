@@ -1,4 +1,4 @@
-import { Router, Request, Response, IRouter } from 'express';
+import { Router, Request, Response, IRouter, NextFunction } from 'express';
 import {
   verifyTotp,
   createAdminSession,
@@ -11,8 +11,6 @@ import {
 
 export const adminRouter: IRouter = Router();
 
-const TOTP_SECRET = () => process.env.ADMIN_TOTP_SECRET ?? '';
-
 const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: 'strict' as const,
@@ -20,13 +18,45 @@ const SESSION_COOKIE_OPTIONS = {
   // secure: true in production (set separately below)
 };
 
+// ---------------------------------------------------------------------------
+// Simple in-memory rate limiter: max 5 login attempts per IP per 15 minutes
+// ---------------------------------------------------------------------------
+
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX = 5;
+
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+const loginAttempts = new Map<string, RateLimitEntry>();
+
+function loginRateLimit(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+
+  if (entry && now < entry.resetAt) {
+    if (entry.count >= RATE_LIMIT_MAX) {
+      const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
+      res.setHeader('Retry-After', String(retryAfterSec));
+      res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+      return;
+    }
+    entry.count += 1;
+  } else {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+  }
+  next();
+}
+
 /**
  * POST /admin/login
  * Body: { code: string }
  * Verifies TOTP code, creates a session, sets an HttpOnly cookie, and returns
  * the raw token so the client can pass it in socket payloads.
  */
-adminRouter.post('/login', (req: Request, res: Response) => {
+adminRouter.post('/login', loginRateLimit, (req: Request, res: Response) => {
   const { code } = req.body as { code?: string };
 
   if (!code) {
@@ -34,7 +64,7 @@ adminRouter.post('/login', (req: Request, res: Response) => {
     return;
   }
 
-  const secret = TOTP_SECRET();
+  const secret = process.env.ADMIN_TOTP_SECRET ?? '';
   if (!secret) {
     res.status(503).json({ error: 'Admin authentication is not configured' });
     return;
