@@ -16,8 +16,29 @@ import {
   clearHypnotizedAtVote2Start,
 } from '@mafia/game-core';
 import { scheduleNightTimer } from './nightHandlers';
+import {
+  appendEvent,
+  finalizeRoomLog,
+  makePhaseTransition,
+  makeVoteCast,
+  makeVoteResult,
+  makeDeath,
+  makeStatusEvent,
+  makeGameEnded,
+} from '../log/gameLog';
+import { persistGameLogs, pruneOldLogs, LOG_DIR, LOG_KEEP_LAST_N } from '../log/logStore';
+import { Player } from '@mafia/shared';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+/**
+ * Resolve a voter's player record from the players list.
+ * Ghost vote IDs are prefixed with "ghost_"; strip it before looking up.
+ */
+function findVoterPlayer(players: Player[], voterId: string): Player | undefined {
+  const id = voterId.startsWith('ghost_') ? voterId.slice(6) : voterId;
+  return players.find((p) => p.id === id);
+}
 
 /** Collected live votes for current Vote1 round */
 const vote1Entries = new Map<string, Map<string, { targetId: string; weight: number }>>();
@@ -148,6 +169,22 @@ export function finalizeVote1(
     ([voterId, { targetId, weight }]) => ({ voterId, targetId, weight })
   );
 
+  // Log individual vote1 casts
+  for (const { voterId, targetId, weight } of voteArray) {
+    const voterPlayer = findVoterPlayer(room.players, voterId);
+    const targetPlayer = room.players.find((p) => p.id === targetId);
+    if (voterPlayer) {
+      appendEvent(
+        roomId,
+        makeVoteCast(voterPlayer, room.round, 'vote1', {
+          targetId,
+          targetNickname: targetPlayer?.nickname ?? targetId,
+          weight,
+        })
+      );
+    }
+  }
+
   const { candidate, isTie, tally } = tallyVote1(voteArray);
 
   room.vote1Candidate = candidate;
@@ -165,6 +202,19 @@ export function finalizeVote1(
     }
   }
 
+  const candidatePlayer = finalCandidate
+    ? room.players.find((p) => p.id === finalCandidate)
+    : null;
+  appendEvent(
+    roomId,
+    makeVoteResult(room.round, 'vote1', {
+      candidateId: finalCandidate,
+      candidateNickname: candidatePlayer?.nickname ?? null,
+      tally,
+      executed: false,
+    })
+  );
+
   io.to(roomId).emit('vote1_result', {
     candidate: finalCandidate,
     isTie,
@@ -177,13 +227,31 @@ export function finalizeVote1(
     room.phase = Phase.VOTE2;
     room.vote1Candidate = finalCandidate;
     // Clear hypnotized status at VOTE2 start
+    const playersBeforeHypnoClear = room.players.map((p) => ({ ...p }));
     room.players = clearHypnotizedAtVote2Start(room.players, room.round);
+    // Log cleared hypnotized statuses
+    for (const after of room.players) {
+      const before = playersBeforeHypnoClear.find((p) => p.id === after.id);
+      if (before?.isHypnotized && !after.isHypnotized) {
+        appendEvent(roomId, makeStatusEvent('status_cleared', after, 'hypnotized', room.round, 'VOTE1'));
+      }
+    }
+    appendEvent(roomId, makePhaseTransition(Phase.VOTE1, Phase.VOTE2, room.round));
     updateRoom(room);
     io.to(roomId).emit('phase_changed', { phase: Phase.VOTE2, round: room.round });
   } else {
     // No candidate → go to NIGHT; clear hypnotized here to prevent stale effects
     // carrying into the next round (VOTE2 won't occur so expiry won't trigger otherwise)
+    const playersBeforeHypnoClear = room.players.map((p) => ({ ...p }));
     room.players = clearHypnotizedAtVote2Start(room.players, room.round);
+    // Log cleared hypnotized statuses
+    for (const after of room.players) {
+      const before = playersBeforeHypnoClear.find((p) => p.id === after.id);
+      if (before?.isHypnotized && !after.isHypnotized) {
+        appendEvent(roomId, makeStatusEvent('status_cleared', after, 'hypnotized', room.round, 'VOTE1'));
+      }
+    }
+    appendEvent(roomId, makePhaseTransition(Phase.VOTE1, Phase.NIGHT, room.round));
     room.phase = Phase.NIGHT;
     room.round += 1;
     room.nightActions = {};
@@ -208,6 +276,17 @@ export function finalizeVote2(
     ([voterId, { choice, weight }]) => ({ voterId, choice, weight })
   );
 
+  // Log individual vote2 casts
+  for (const { voterId, choice, weight } of voteArray) {
+    const voterPlayer = findVoterPlayer(room.players, voterId);
+    if (voterPlayer) {
+      appendEvent(
+        roomId,
+        makeVoteCast(voterPlayer, room.round, 'vote2', { weight, choice })
+      );
+    }
+  }
+
   const eligibleCount = room.players.filter(
     (p) =>
       canVote(p, 'vote2', room.settings.ghostVoteMode, room.round) &&
@@ -225,6 +304,17 @@ export function finalizeVote2(
 
   room.vote2Tally = { yes: yesCnt, no: noCnt };
 
+  const candidatePlayer = room.players.find((p) => p.id === candidateId);
+  appendEvent(
+    roomId,
+    makeVoteResult(room.round, 'vote2', {
+      candidateId,
+      candidateNickname: candidatePlayer?.nickname ?? null,
+      tally: { yes: yesCnt, no: noCnt },
+      executed,
+    })
+  );
+
   io.to(roomId).emit('vote2_result', {
     executed,
     candidateId,
@@ -233,15 +323,17 @@ export function finalizeVote2(
 
   vote2Entries.delete(roomId);
 
-  // Expire drunk/voteBlock effects from this round
+  // Expire drunk/voteBlock effects from this round and log clearances
   for (const p of room.players) {
     if (p.drunkExpiresAfterVote2 === room.round) {
       p.isDrunk = false;
       p.drunkExpiresAfterVote2 = null;
+      appendEvent(roomId, makeStatusEvent('status_cleared', p, 'drunk', room.round, 'VOTE2'));
     }
     if (p.voteBlockExpiresAfterVote2 === room.round) {
       p.isVoteBlocked = false;
       p.voteBlockExpiresAfterVote2 = null;
+      appendEvent(roomId, makeStatusEvent('status_cleared', p, 'vote_blocked', room.round, 'VOTE2'));
     }
   }
 
@@ -260,6 +352,7 @@ export function finalizeVote2(
         'announcement',
         `${candidate.nickname}님이 처형되었습니다.${roleInfo}`
       );
+      appendEvent(roomId, makeDeath(candidate, room.round, 'VOTE2', 'execution'));
     }
   }
 
@@ -268,6 +361,15 @@ export function finalizeVote2(
   if (winResult.winner) {
     room.phase = Phase.ENDED;
     updateRoom(room);
+    appendEvent(roomId, makeGameEnded(winResult.winner, winResult.reason, room.round, 'VOTE2', room.players));
+    appendEvent(roomId, makePhaseTransition(Phase.VOTE2, Phase.ENDED, room.round));
+    const { full, public: pub } = finalizeRoomLog(room);
+    try {
+      persistGameLogs(pub, full);
+      pruneOldLogs(LOG_DIR, LOG_KEEP_LAST_N);
+    } catch (err) {
+      console.error('[log] Failed to persist game logs:', err);
+    }
     io.to(roomId).emit('game_ended', {
       winner: winResult.winner,
       reason: winResult.reason,
@@ -276,6 +378,7 @@ export function finalizeVote2(
   }
 
   // Go to next NIGHT
+  appendEvent(roomId, makePhaseTransition(Phase.VOTE2, Phase.NIGHT, room.round));
   room.phase = Phase.NIGHT;
   room.round += 1;
   room.vote1Candidate = null;
