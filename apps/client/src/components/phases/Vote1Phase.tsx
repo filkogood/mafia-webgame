@@ -47,6 +47,21 @@ export default function Vote1Phase() {
     <div>
       <h2>🗳️ 투표1 ({roomState.round}라운드)</h2>
       <Timer seconds={roomState.settings.vote1TimerSec} label="남은 시간" />
+      {me?.isHypnotized && (
+        <div
+          style={{
+            background: '#4a0080',
+            color: '#fff',
+            padding: '10px 16px',
+            borderRadius: 6,
+            marginBottom: 12,
+            fontWeight: 'bold',
+            textAlign: 'center',
+          }}
+        >
+          당신은 지금 말을 할 수 없습니다. 말을 해서는 안됩니다.
+        </div>
+      )}
 
       {Object.keys(tally).length > 0 && (
         <div style={{ marginBottom: 8 }}>

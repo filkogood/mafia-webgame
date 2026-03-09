@@ -104,6 +104,18 @@ export function processNightActions(
     target.voteBlockExpiresAfterVote2 = round;
   }
 
+  // ── Hypnotist (CULT_MONK): apply hypnotized ────────────────────────────────
+  for (const actor of updated) {
+    if (actor.role !== Role.CULT_MONK || !actor.isAlive) continue;
+    const targetId = confirmedActions[actor.id] ?? null;
+    if (!targetId) continue;
+    const target = byId(targetId);
+    if (!target) continue;
+
+    target.isHypnotized = true;
+    target.hypnotizedExpiresAtVote2 = round;
+  }
+
   // ── Doctor: collect saves ──────────────────────────────────────────────────
   const savedIds = new Set<string>();
   for (const actor of updated) {
@@ -214,7 +226,7 @@ export function processNightActions(
     }
   }
 
-  // ── Expire drunk / voteBlock from previous rounds ─────────────────────────
+  // ── Expire drunk / voteBlock / hypnotized from previous rounds ───────────
   // (expiry is checked at vote time; we just clean up here for completed rounds)
   for (const p of updated) {
     if (
@@ -232,6 +244,14 @@ export function processNightActions(
     ) {
       p.isVoteBlocked = false;
       p.voteBlockExpiresAfterVote2 = null;
+    }
+    if (
+      p.isHypnotized &&
+      p.hypnotizedExpiresAtVote2 !== null &&
+      p.hypnotizedExpiresAtVote2 < round
+    ) {
+      p.isHypnotized = false;
+      p.hypnotizedExpiresAtVote2 = null;
     }
   }
 
@@ -277,4 +297,17 @@ export function processNightActions(
   }
 
   return { deaths, healedPlayers, announcements, updatedPlayers: updated, visits, privateNotifications };
+}
+
+/**
+ * Clears hypnotized status for all players whose effect expires at the start of
+ * Vote2 for the given round. Call this when transitioning from VOTE1 to VOTE2.
+ */
+export function clearHypnotizedAtVote2Start(players: Player[], round: number): Player[] {
+  return players.map((p) => {
+    if (p.isHypnotized && p.hypnotizedExpiresAtVote2 === round) {
+      return { ...p, isHypnotized: false, hypnotizedExpiresAtVote2: null };
+    }
+    return p;
+  });
 }

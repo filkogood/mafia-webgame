@@ -19,6 +19,8 @@ function makePlayer(
     drunkExpiresAfterVote2: null,
     isVoteBlocked: false,
     voteBlockExpiresAfterVote2: null,
+    isHypnotized: false,
+    hypnotizedExpiresAtVote2: null,
     hasInheritedMafia: false,
     knownMafiaTeam: null,
     ghostVotesUsedVote1: false,

@@ -18,6 +18,10 @@ export interface Player {
   isVoteBlocked: boolean;
   /** Vote-block expires after this Vote2 round ends (round number) */
   voteBlockExpiresAfterVote2: number | null;
+  /** True if hypnotized by Hypnotist (CULT_MONK); player must stay silent */
+  isHypnotized: boolean;
+  /** Hypnotized effect expires at the start of Vote2 for this round number */
+  hypnotizedExpiresAtVote2: number | null;
   /** True if RookieMafia has inherited mafia body role */
   hasInheritedMafia: boolean;
   /** Collaborator's known mafia team after contact triggered */

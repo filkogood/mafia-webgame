@@ -13,6 +13,7 @@ import {
   getVoterWeight,
   canVote,
   checkWinCondition,
+  clearHypnotizedAtVote2Start,
 } from '@mafia/game-core';
 import { scheduleNightTimer } from './nightHandlers';
 
@@ -175,10 +176,14 @@ export function finalizeVote1(
   if (finalCandidate) {
     room.phase = Phase.VOTE2;
     room.vote1Candidate = finalCandidate;
+    // Clear hypnotized status at VOTE2 start
+    room.players = clearHypnotizedAtVote2Start(room.players, room.round);
     updateRoom(room);
     io.to(roomId).emit('phase_changed', { phase: Phase.VOTE2, round: room.round });
   } else {
-    // No candidate → go to NIGHT
+    // No candidate → go to NIGHT; clear hypnotized here to prevent stale effects
+    // carrying into the next round (VOTE2 won't occur so expiry won't trigger otherwise)
+    room.players = clearHypnotizedAtVote2Start(room.players, room.round);
     room.phase = Phase.NIGHT;
     room.round += 1;
     room.nightActions = {};
