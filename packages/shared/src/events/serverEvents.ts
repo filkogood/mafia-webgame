@@ -63,4 +63,7 @@ export interface ServerToClientEvents {
 
   /** Sent privately to Android when a Hacker visits them at night */
   hacker_visited: (payload: { hackerId: string; hackerNickname: string }) => void;
+
+  /** Private toast notification sent to a single player (e.g. investigation results) */
+  private_toast: (payload: { message: string }) => void;
 }

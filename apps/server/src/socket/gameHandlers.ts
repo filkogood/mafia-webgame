@@ -6,6 +6,8 @@ import {
   Role,
   RoleCategory,
   RoleKoreanName,
+  CITIZEN_BASIC_ROLES,
+  CITIZEN_SPECIAL_ROLES,
 } from '@mafia/shared';
 import { getRoom, updateRoom, findRoomByPlayerId } from '../state/roomStore';
 import { getPreset } from '@mafia/game-core';
@@ -13,6 +15,8 @@ import { checkWinCondition } from '@mafia/game-core';
 import { scheduleNightTimer } from './nightHandlers';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+const ALL_CITIZEN_ROLES = [...CITIZEN_BASIC_ROLES, ...CITIZEN_SPECIAL_ROLES];
 
 export function registerGameHandlers(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
@@ -101,6 +105,21 @@ export function registerGameHandlers(
         mafiaTeam: teamInfo,
         roomState: room,
       });
+    }
+
+    // Hacker start knowledge: learn one random citizen-team role NOT in this game
+    const hackerPlayer = room.players.find((p) => p.role === Role.HACKER);
+    if (hackerPlayer) {
+      const assignedRoles = new Set(room.players.map((p) => p.role));
+      const missingCitizenRoles = ALL_CITIZEN_ROLES.filter((r) => !assignedRoles.has(r));
+      if (missingCitizenRoles.length > 0) {
+        const randomRole =
+          missingCitizenRoles[Math.floor(Math.random() * missingCitizenRoles.length)];
+        const hackerSocket = io.sockets.sockets.get(hackerPlayer.id);
+        hackerSocket?.emit('private_toast', {
+          message: `[해커 정보] 이 게임에 없는 시민 역할: ${RoleKoreanName[randomRole]}`,
+        });
+      }
     }
 
     io.to(room.id).emit('phase_changed', {

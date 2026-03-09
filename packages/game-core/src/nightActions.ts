@@ -1,4 +1,4 @@
-import { Player, GameSettings, Role } from '@mafia/shared';
+import { Player, GameSettings, Role, RoleKoreanName } from '@mafia/shared';
 
 export interface NightActionResult {
   deaths: string[];
@@ -7,6 +7,8 @@ export interface NightActionResult {
   updatedPlayers: Player[];
   /** Night visits: each entry means fromId's role visited toId that night. */
   visits: Array<{ fromId: string; toId: string }>;
+  /** Private per-player notifications (e.g. investigation results). */
+  privateNotifications: Array<{ playerId: string; message: string }>;
 }
 
 function clonePlayers(players: Player[]): Player[] {
@@ -46,6 +48,14 @@ export function processNightActions(
   const deaths: string[] = [];
   const healedPlayers: string[] = [];
   const announcements: string[] = [];
+
+  // Capture pre-night state for investigation: track which ROOKIE_MAFIA were
+  // non-inherited at the START of the night (before inheritance runs this round).
+  const nonInheritedRookieMafiaIds = new Set(
+    players
+      .filter((p) => p.role === Role.ROOKIE_MAFIA && !p.hasInheritedMafia && p.isAlive)
+      .map((p) => p.id)
+  );
 
   // ── Madam: apply drunk / break couple ─────────────────────────────────────
   for (const actor of updated) {
@@ -233,5 +243,38 @@ export function processNightActions(
     if (targetId) visits.push({ fromId: actor.id, toId: targetId });
   }
 
-  return { deaths, healedPlayers, announcements, updatedPlayers: updated, visits };
+  // ── Compute private notifications ─────────────────────────────────────────
+  const privateNotifications: Array<{ playerId: string; message: string }> = [];
+
+  // Rookie Mafia investigation (non-inherited only, based on pre-night state)
+  for (const actor of updated) {
+    if (!nonInheritedRookieMafiaIds.has(actor.id)) continue;
+    const targetId = confirmedActions[actor.id] ?? null;
+    if (!targetId) continue;
+    const target = byId(targetId);
+    if (!target) continue;
+    const result = target.role === Role.MAFIA ? '마피아' : '시민';
+    privateNotifications.push({ playerId: actor.id, message: `조사 결과: ${result}` });
+  }
+
+  // Hacker investigation
+  for (const actor of updated) {
+    if (actor.role !== Role.HACKER || !actor.isAlive) continue;
+    const targetId = confirmedActions[actor.id] ?? null;
+    if (!targetId) continue;
+    const target = byId(targetId);
+    if (!target) continue;
+    let message: string;
+    if (actor.knownMafiaTeam === null) {
+      // Pre-contact: only MAFIA body counts as "마피아"; all other roles count as "시민"
+      const result = target.role === Role.MAFIA ? '마피아' : '시민';
+      message = `해킹 결과: ${result}`;
+    } else {
+      // Post-contact: reveal exact role
+      message = `해킹 결과: ${RoleKoreanName[target.role]}`;
+    }
+    privateNotifications.push({ playerId: actor.id, message });
+  }
+
+  return { deaths, healedPlayers, announcements, updatedPlayers: updated, visits, privateNotifications };
 }
