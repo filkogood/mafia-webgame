@@ -14,6 +14,7 @@ import {
   canVote,
   checkWinCondition,
 } from '@mafia/game-core';
+import { scheduleNightTimer } from './nightHandlers';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -184,6 +185,7 @@ export function finalizeVote1(
     room.quickFinishVotes = [];
     updateRoom(room);
     io.to(roomId).emit('phase_changed', { phase: Phase.NIGHT, round: room.round });
+    scheduleNightTimer(io, roomId);
   }
   io.to(roomId).emit('room_state', room);
 }
@@ -279,4 +281,5 @@ export function finalizeVote2(
   updateRoom(room);
   io.to(roomId).emit('phase_changed', { phase: Phase.NIGHT, round: room.round });
   io.to(roomId).emit('room_state', room);
+  scheduleNightTimer(io, roomId);
 }

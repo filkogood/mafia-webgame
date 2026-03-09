@@ -3,6 +3,7 @@ import {
   ClientToServerEvents,
   ServerToClientEvents,
   Phase,
+  Player,
   Role,
   RoleCategory,
   RoleKoreanName,
@@ -16,27 +17,63 @@ import {
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
+/** Per-room night phase timeout handles */
+const nightTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Clears any scheduled night timer for the given room */
+export function clearNightTimer(roomId: string): void {
+  const handle = nightTimers.get(roomId);
+  if (handle !== undefined) {
+    clearTimeout(handle);
+    nightTimers.delete(roomId);
+  }
+}
+
+/** Schedules a night timeout for the given room; clears any previous timer first */
+export function scheduleNightTimer(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  roomId: string
+): void {
+  clearNightTimer(roomId);
+  const room = getRoom(roomId);
+  if (!room) return;
+  const handle = setTimeout(() => {
+    nightTimers.delete(roomId);
+    advanceAfterNight(io, roomId);
+  }, room.settings.nightTimerSec * 1000);
+  nightTimers.set(roomId, handle);
+}
+
+/** Returns true if the player must confirm a night action for early-advance checks */
+function mustConfirmNightAction(p: Player): boolean {
+  if (!p.isAlive) return false;
+  const isMafia =
+    p.role === Role.MAFIA ||
+    (p.role === Role.ROOKIE_MAFIA && p.hasInheritedMafia);
+  const isCollaborator = RoleCategory[p.role] === 'mafia_collaborator';
+  const isDoctor = p.role === Role.DOCTOR;
+  return isMafia || isCollaborator || isDoctor;
+}
+
 function advanceAfterNight(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   roomId: string
 ) {
   const room = getRoom(roomId);
-  if (!room) return;
+  if (!room || room.phase !== Phase.NIGHT) return;
+
+  clearNightTimer(roomId);
 
   // Track possessors before processing so we can detect role changes
   const possessorsBefore = room.players
     .filter((p) => p.role === Role.POSSESSOR && p.isAlive)
     .map((p) => p.id);
 
-  // Build confirmed actions map
+  // Build confirmed actions map; players who submitted no action are absent and
+  // treated as null by processNightActions (confirmedActions[actor.id] ?? null)
   const confirmedActions: Record<string, string | null> = {};
   for (const [actorId, action] of Object.entries(room.nightActions)) {
-    if (!action.isPreview) {
-      confirmedActions[actorId] = action.targetId;
-    } else {
-      // Auto-confirm last preview on timer expiry
-      confirmedActions[actorId] = action.targetId;
-    }
+    confirmedActions[actorId] = action.targetId;
   }
 
   const result = processNightActions(
@@ -183,22 +220,14 @@ export function registerNightHandlers(
     updateRoom(room);
 
     // Check if all active role players have confirmed
-    const activeActors = room.players.filter((p) => {
-      if (!p.isAlive) return false;
-      const isMafia =
-        p.role === Role.MAFIA ||
-        (p.role === Role.ROOKIE_MAFIA && p.hasInheritedMafia);
-      const isCollaborator = RoleCategory[p.role] === 'mafia_collaborator';
-      const isDoctor = p.role === Role.DOCTOR;
-      return isMafia || isCollaborator || isDoctor;
-    });
-
+    const activeActors = room.players.filter(mustConfirmNightAction);
     const allConfirmed = activeActors.every((p) => {
       const action = room.nightActions[p.id];
       return action && !action.isPreview;
     });
 
     if (allConfirmed) {
+      clearNightTimer(room.id);
       advanceAfterNight(io, room.id);
     }
   });
