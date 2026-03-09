@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Phase } from '@mafia/shared';
 import socket from './socket';
 import { useGameStore } from './store/gameStore';
@@ -11,9 +11,18 @@ import Vote2Phase from './components/phases/Vote2Phase';
 import AnnouncementBanner from './components/AnnouncementBanner';
 import PrivateToast from './components/PrivateToast';
 
+const IS_DEV = import.meta.env.DEV;
+
+// DevPage is only bundled in dev builds; the lazy import is dead code in production.
+const DevPage = IS_DEV
+  ? lazy(() => import('./pages/DevPage'))
+  : null;
+
 export default function App() {
   const { roomState, myPlayerId, setRoomState, setMyInfo, addAnnouncement } =
     useGameStore();
+
+  const [showDev, setShowDev] = useState(false);
 
   useEffect(() => {
     socket.on('room_state', (room) => setRoomState(room));
@@ -76,12 +85,61 @@ export default function App() {
 
   const phase = roomState?.phase;
 
+  if (IS_DEV && showDev && DevPage) {
+    return (
+      <div>
+        <button
+          onClick={() => setShowDev(false)}
+          style={{ margin: 8, padding: '4px 12px', cursor: 'pointer' }}
+        >
+          ← 게임으로 돌아가기
+        </button>
+        <Suspense fallback={<div>Loading...</div>}>
+          <DevPage />
+        </Suspense>
+      </div>
+    );
+  }
+
+  const devToggle = IS_DEV ? (
+    <button
+      onClick={() => setShowDev(true)}
+      title="Dev Panel"
+      style={{
+        position: 'fixed',
+        bottom: 12,
+        right: 12,
+        padding: '6px 10px',
+        background: '#ff6b6b',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontSize: 12,
+        zIndex: 9999,
+        opacity: 0.85,
+      }}
+    >
+      🛠 Dev
+    </button>
+  ) : null;
+
   if (!roomState || !myPlayerId) {
-    return <LobbyPage />;
+    return (
+      <>
+        <LobbyPage />
+        {devToggle}
+      </>
+    );
   }
 
   if (phase === Phase.LOBBY) {
-    return <RoomPage />;
+    return (
+      <>
+        <RoomPage />
+        {devToggle}
+      </>
+    );
   }
 
   return (
@@ -97,6 +155,7 @@ export default function App() {
           🎮 게임 종료
         </div>
       )}
+      {devToggle}
     </div>
   );
 }
