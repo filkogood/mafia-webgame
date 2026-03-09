@@ -1,0 +1,13 @@
+{
+  "name": "mafia-webgame",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @mafia/server dev\" \"pnpm --filter @mafia/client dev\"",
+    "build": "pnpm --filter @mafia/shared build && pnpm --filter @mafia/game-core build && pnpm --filter @mafia/server build && pnpm --filter @mafia/client build",
+    "test": "pnpm --filter @mafia/game-core test"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}
