@@ -9,6 +9,7 @@ import DayPhase from './components/phases/DayPhase';
 import Vote1Phase from './components/phases/Vote1Phase';
 import Vote2Phase from './components/phases/Vote2Phase';
 import AnnouncementBanner from './components/AnnouncementBanner';
+import PrivateToast from './components/PrivateToast';
 
 export default function App() {
   const { roomState, myPlayerId, setRoomState, setMyInfo, addAnnouncement } =
@@ -85,6 +86,7 @@ export default function App() {
 
   return (
     <div style={{ padding: 16, fontFamily: 'sans-serif', maxWidth: 600, margin: '0 auto' }}>
+      <PrivateToast />
       <AnnouncementBanner />
       {phase === Phase.NIGHT && <NightPhase />}
       {phase === Phase.DAY && <DayPhase />}

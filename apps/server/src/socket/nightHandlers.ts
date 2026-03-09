@@ -152,6 +152,12 @@ function advanceAfterNight(
     io.to(room.id).emit('announcement', msg);
   }
 
+  // Send private notifications (investigation results)
+  for (const notif of result.privateNotifications) {
+    const s = io.sockets.sockets.get(notif.playerId);
+    s?.emit('private_toast', { message: notif.message });
+  }
+
   // Check win condition
   const winResult = checkWinCondition(room.players);
   if (winResult.winner) {
@@ -191,7 +197,7 @@ export function registerNightHandlers(
     };
     updateRoom(room);
 
-    // Send preview updates to mafia players
+    // Send preview updates to eligible players when a mafia actor sends a preview
     const isMafiaActor =
       actor.role === Role.MAFIA ||
       (actor.role === Role.ROOKIE_MAFIA && actor.hasInheritedMafia);
@@ -206,12 +212,15 @@ export function registerNightHandlers(
           mafiaPreviewTargets[player.id] = action?.targetId ?? null;
         }
       }
-      // Send to all mafia players
+      // Send to mafia bodies, inherited rookie mafia, and post-contact collaborators
       for (const player of room.players) {
         const isMafia =
           player.role === Role.MAFIA ||
           (player.role === Role.ROOKIE_MAFIA && player.hasInheritedMafia);
-        if (isMafia) {
+        const isPostContactCollab =
+          RoleCategory[player.role] === 'mafia_collaborator' &&
+          player.knownMafiaTeam !== null;
+        if (isMafia || isPostContactCollab) {
           const s = io.sockets.sockets.get(player.id);
           s?.emit('night_preview_update', mafiaPreviewTargets);
         }

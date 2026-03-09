@@ -406,4 +406,161 @@ describe('processNightActions', () => {
     expect(result.visits).toHaveLength(1);
     expect(result.visits[0]).toEqual({ fromId: 'h1', toId: 'a1' });
   });
+
+  // ── Rookie Mafia investigation tests ──────────────────────────────────────
+
+  it('rookieMafia investigation: mafia target yields "마피아"', () => {
+    const players = [
+      makePlayer('rm1', Role.ROOKIE_MAFIA),
+      makePlayer('m1', Role.MAFIA),
+    ];
+    const actions = { rm1: 'm1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'rm1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('마피아');
+  });
+
+  it('rookieMafia investigation: citizen target yields "시민"', () => {
+    const players = [
+      makePlayer('rm1', Role.ROOKIE_MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { rm1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'rm1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('시민');
+    expect(notif!.message).not.toContain('마피아');
+  });
+
+  it('rookieMafia investigation: collaborator (HACKER) target yields "시민"', () => {
+    const players = [
+      makePlayer('rm1', Role.ROOKIE_MAFIA),
+      makePlayer('h1', Role.HACKER),
+    ];
+    const actions = { rm1: 'h1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'rm1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('시민');
+  });
+
+  it('rookieMafia investigation: null target yields no notification', () => {
+    const players = [
+      makePlayer('rm1', Role.ROOKIE_MAFIA),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { rm1: null };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'rm1');
+    expect(notif).toBeUndefined();
+  });
+
+  it('rookieMafia after inheritance does not produce investigation notification', () => {
+    // Once inherited, ROOKIE_MAFIA acts as mafia body, not as investigator
+    const players = [
+      makePlayer('rm1', Role.ROOKIE_MAFIA, { hasInheritedMafia: true }),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { rm1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'rm1');
+    expect(notif).toBeUndefined();
+  });
+
+  // ── Hacker investigation tests ─────────────────────────────────────────────
+
+  it('hacker pre-contact: mafia target yields "마피아"', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER), // knownMafiaTeam: null (pre-contact)
+      makePlayer('m1', Role.MAFIA),
+    ];
+    const actions = { h1: 'm1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('마피아');
+    expect(notif!.message).not.toContain('해커');
+  });
+
+  it('hacker pre-contact: collaborator (ROOKIE_MAFIA) target yields "시민"', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER), // knownMafiaTeam: null
+      makePlayer('rm1', Role.ROOKIE_MAFIA),
+    ];
+    const actions = { h1: 'rm1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('시민');
+    expect(notif!.message).not.toContain('마피아');
+  });
+
+  it('hacker pre-contact: citizen target yields "시민"', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { h1: 'c1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('시민');
+  });
+
+  it('hacker post-contact: reveals exact role of target', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER, {
+        knownMafiaTeam: [{ id: 'm1', nickname: 'm1', role: Role.MAFIA }],
+      }),
+      makePlayer('d1', Role.DOCTOR),
+    ];
+    const actions = { h1: 'd1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeDefined();
+    // Should reveal "의사" (Korean name for DOCTOR)
+    expect(notif!.message).toContain('의사');
+  });
+
+  it('hacker post-contact: reveals exact role even for mafia', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER, {
+        knownMafiaTeam: [{ id: 'm1', nickname: 'm1', role: Role.MAFIA }],
+      }),
+      makePlayer('m1', Role.MAFIA),
+    ];
+    const actions = { h1: 'm1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeDefined();
+    expect(notif!.message).toContain('마피아');
+  });
+
+  it('hacker post-contact: reveals collaborator role exactly', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER, {
+        knownMafiaTeam: [{ id: 'm1', nickname: 'm1', role: Role.MAFIA }],
+      }),
+      makePlayer('rm1', Role.ROOKIE_MAFIA),
+    ];
+    const actions = { h1: 'rm1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeDefined();
+    // Should reveal "신입마피아" (Korean name for ROOKIE_MAFIA), not just "시민"
+    expect(notif!.message).toContain('신입마피아');
+  });
+
+  it('hacker: null target yields no notification', () => {
+    const players = [
+      makePlayer('h1', Role.HACKER),
+      makePlayer('c1', Role.CITIZEN),
+    ];
+    const actions = { h1: null };
+    const result = processNightActions(players, actions, settings, 1);
+    const notif = result.privateNotifications.find((n) => n.playerId === 'h1');
+    expect(notif).toBeUndefined();
+  });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Role } from '@mafia/shared';
+import { Role, RoleCategory } from '@mafia/shared';
 import socket from '../../socket';
 import { useGameStore } from '../../store/gameStore';
 import Timer from '../Timer';
@@ -52,6 +52,11 @@ export default function NightPhase() {
   const isMafia =
     myRole === Role.MAFIA ||
     (myRole === Role.ROOKIE_MAFIA && me.hasInheritedMafia);
+
+  // Post-contact collaborators can also see the mafia target preview
+  const canSeePreview =
+    isMafia ||
+    (RoleCategory[myRole] === 'mafia_collaborator' && me.knownMafiaTeam !== null);
 
   const handlePreview = (targetId: string) => {
     // Toggle: clicking the same player deselects; clicking a new player selects
@@ -124,7 +129,7 @@ export default function NightPhase() {
         <p style={{ color: '#27ae60', fontWeight: 'bold' }}>✅ 행동이 확정되었습니다.</p>
       )}
 
-      {isMafia && Object.keys(mafiaPreviewTargets).length > 0 && (
+      {canSeePreview && Object.keys(mafiaPreviewTargets).length > 0 && (
         <div
           style={{
             marginTop: 12,
