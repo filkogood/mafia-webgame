@@ -5,8 +5,20 @@ A friend-only Mafia web game built with React + Socket.IO.
 ## Getting Started
 
 ```bash
+# 1. Install dependencies
 pnpm install
+
+# 2. Create your local environment file
+cp .env.example .env
+
+# 3. Start both server and client concurrently
 pnpm dev
+```
+
+Run the test suite (no build step required):
+
+```bash
+pnpm test
 ```
 
 ## Admin Authentication (TOTP)
