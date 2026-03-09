@@ -22,6 +22,12 @@ export default function App() {
       setRoomState(roomState);
     });
 
+    socket.on('role_updated', ({ yourRole, mafiaTeam }) => {
+      const playerId = useGameStore.getState().myPlayerId;
+      if (!playerId) return;
+      setMyInfo(playerId, yourRole, mafiaTeam);
+    });
+
     socket.on('phase_changed', ({ phase, round }) => {
       setRoomState({ ...useGameStore.getState().roomState!, phase, round });
     });
@@ -51,6 +57,7 @@ export default function App() {
     return () => {
       socket.off('room_state');
       socket.off('game_started');
+      socket.off('role_updated');
       socket.off('phase_changed');
       socket.off('announcement');
       socket.off('player_died');
