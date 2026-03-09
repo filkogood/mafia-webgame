@@ -2,6 +2,7 @@ import { Router, Request, Response, IRouter } from 'express';
 import { getRoom } from '../state/roomStore';
 import { canDownloadPublicLog, canDownloadFullLog } from '../log/gameLog';
 import { readGameLog, LOG_DIR } from '../log/logStore';
+import { getAdminToken, isValidAdminSession } from '../auth/adminAuth';
 
 export const logRouter: IRouter = Router();
 
@@ -46,25 +47,31 @@ logRouter.get('/:roomId/public', (req: Request, res: Response) => {
  * GET /log/:roomId/full?playerId=<socketId>
  *
  * Download the full audit log for a completed game.
- * Available to the host (room owner) only.
+ * Available to the host (room owner) OR a valid admin session.
  */
 logRouter.get('/:roomId/full', (req: Request, res: Response) => {
   const { roomId } = req.params;
   const playerId = req.query.playerId as string | undefined;
 
-  if (!playerId) {
-    res.status(400).json({ error: 'playerId query parameter is required' });
-    return;
-  }
+  // Admin may always download full logs (even without being the host)
+  const adminToken = getAdminToken(req);
+  const isAdmin = isValidAdminSession(adminToken);
 
-  const room = getRoom(roomId);
+  if (!isAdmin) {
+    if (!playerId) {
+      res.status(400).json({ error: 'playerId query parameter is required' });
+      return;
+    }
 
-  if (!canDownloadFullLog(roomId, playerId, room)) {
-    res.status(403).json({
-      error:
-        'Access denied: game has not ended yet or you are not the host',
-    });
-    return;
+    const room = getRoom(roomId);
+
+    if (!canDownloadFullLog(roomId, playerId, room)) {
+      res.status(403).json({
+        error:
+          'Access denied: game has not ended yet or you are not the host',
+      });
+      return;
+    }
   }
 
   const log = readGameLog(roomId, 'full', LOG_DIR);

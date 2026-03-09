@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import socket from '../socket';
+import { useAdminStore } from '../store/adminStore';
 
-export default function LobbyPage() {
+export default function LobbyPage({ onShowAdmin }: { onShowAdmin: () => void }) {
   const [nickname, setNickname] = useState('');
   const [roomId, setRoomId] = useState('');
-  const [mode, setMode] = useState<'create' | 'join'>('create');
+  const [mode, setMode] = useState<'create' | 'join'>('join');
+  const { adminToken, isAdmin } = useAdminStore();
 
   const handleCreate = () => {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요.');
-    socket.emit('create_room', { nickname: nickname.trim() });
+    if (!adminToken) return alert('방 생성은 관리자만 가능합니다.');
+    socket.emit('create_room', { nickname: nickname.trim(), adminToken });
   };
 
   const handleJoin = () => {
@@ -40,18 +43,20 @@ export default function LobbyPage() {
         style={{ padding: 8, fontSize: 16, width: 240 }}
       />
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => setMode('create')}
-          style={{
-            padding: '8px 16px',
-            background: mode === 'create' ? '#333' : '#eee',
-            color: mode === 'create' ? '#fff' : '#333',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          방 만들기
-        </button>
+        {isAdmin() && (
+          <button
+            onClick={() => setMode('create')}
+            style={{
+              padding: '8px 16px',
+              background: mode === 'create' ? '#333' : '#eee',
+              color: mode === 'create' ? '#fff' : '#333',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            방 만들기
+          </button>
+        )}
         <button
           onClick={() => setMode('join')}
           style={{
@@ -87,6 +92,26 @@ export default function LobbyPage() {
         }}
       >
         {mode === 'create' ? '방 만들기' : '입장하기'}
+      </button>
+
+      {/* Admin login button – always visible, gated by OTP on the admin page */}
+      <button
+        onClick={onShowAdmin}
+        style={{
+          position: 'fixed',
+          bottom: 12,
+          left: 12,
+          padding: '6px 10px',
+          background: isAdmin() ? '#27ae60' : '#95a5a6',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 6,
+          cursor: 'pointer',
+          fontSize: 12,
+          opacity: 0.85,
+        }}
+      >
+        {isAdmin() ? '🔐 관리자' : '🔑 관리자 로그인'}
       </button>
     </div>
   );
