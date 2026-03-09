@@ -28,7 +28,17 @@ export const useGameStore = create<GameState>((set) => ({
   mafiaTeam: null,
   announcements: [],
 
-  setRoomState: (room) => set({ roomState: room }),
+  setRoomState: (room) =>
+    set((state) => {
+      const myPlayerId = state.myPlayerId;
+      if (myPlayerId) {
+        const me = room.players.find((p) => p.id === myPlayerId);
+        if (me) {
+          return { roomState: room, myRole: me.role };
+        }
+      }
+      return { roomState: room };
+    }),
   setMyInfo: (playerId, role, mafiaTeam) =>
     set({ myPlayerId: playerId, myRole: role, mafiaTeam: mafiaTeam ?? null }),
   addAnnouncement: (msg) =>

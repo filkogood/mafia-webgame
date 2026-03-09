@@ -48,6 +48,7 @@ export default function RoomPage() {
               ['teamKillMode', '팀킬모드'],
               ['multiKillMode', '멀티킬모드'],
               ['announcementMode', '공지모드'],
+              ['doctorSelfHealEnabled', '의사 자가치유 허용'],
               ['allowQuickFinish', '빨리하기'],
             ] as [keyof typeof roomState.settings, string][]
           ).map(([key, label]) => (

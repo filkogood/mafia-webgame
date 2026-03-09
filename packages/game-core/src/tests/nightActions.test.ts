@@ -117,6 +117,74 @@ describe('processNightActions', () => {
     expect(cp2.isCouple).toBe(false);
   });
 
+  it('madam targeting couple converts both partners to citizens', () => {
+    const players = [
+      makePlayer('md1', Role.MADAM),
+      makePlayer('cp1', Role.COUPLE, {
+        isCouple: true,
+        couplePairId: 'cp2',
+        isDrunk: false,
+      }),
+      makePlayer('cp2', Role.COUPLE, {
+        isCouple: true,
+        couplePairId: 'cp1',
+        isDrunk: true,
+        drunkExpiresAfterVote2: 1,
+      }),
+    ];
+    const actions = { md1: 'cp1' };
+    const result = processNightActions(players, actions, settings, 1);
+    const cp1 = result.updatedPlayers.find((p) => p.id === 'cp1')!;
+    const cp2 = result.updatedPlayers.find((p) => p.id === 'cp2')!;
+    expect(cp1.role).toBe(Role.CITIZEN);
+    expect(cp2.role).toBe(Role.CITIZEN);
+    expect(cp1.isCouple).toBe(false);
+    expect(cp2.isCouple).toBe(false);
+    expect(cp1.couplePairId).toBeNull();
+    expect(cp2.couplePairId).toBeNull();
+    expect(cp1.isDrunk).toBe(false);
+    expect(cp2.isDrunk).toBe(false);
+    expect(cp2.drunkExpiresAfterVote2).toBeNull();
+  });
+
+  it('doctor self-heal allowed in round 1 when toggle is off', () => {
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('d1', Role.DOCTOR),
+    ];
+    const actions = { m1: 'd1', d1: 'd1' };
+    const result = processNightActions(players, actions, settings, 1);
+    // self-heal on round 1 is allowed even when toggle is off
+    expect(result.deaths).not.toContain('d1');
+    expect(result.healedPlayers).toContain('d1');
+  });
+
+  it('doctor self-heal disallowed in round >1 when toggle is off', () => {
+    const offSettings: GameSettings = { ...settings, doctorSelfHealEnabled: false };
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('d1', Role.DOCTOR),
+    ];
+    const actions = { m1: 'd1', d1: 'd1' };
+    const result = processNightActions(players, actions, offSettings, 2);
+    // self-heal on round 2+ is blocked when toggle is off
+    expect(result.deaths).toContain('d1');
+    expect(result.healedPlayers).not.toContain('d1');
+  });
+
+  it('doctor self-heal allowed in any round when toggle is on', () => {
+    const onSettings: GameSettings = { ...settings, doctorSelfHealEnabled: true };
+    const players = [
+      makePlayer('m1', Role.MAFIA),
+      makePlayer('d1', Role.DOCTOR),
+    ];
+    const actions = { m1: 'd1', d1: 'd1' };
+    const result = processNightActions(players, actions, onSettings, 3);
+    // self-heal always allowed when toggle is on
+    expect(result.deaths).not.toContain('d1');
+    expect(result.healedPlayers).toContain('d1');
+  });
+
   it('rookieMafia inherits when all mafia bodies die', () => {
     const players = [
       makePlayer('m1', Role.MAFIA),

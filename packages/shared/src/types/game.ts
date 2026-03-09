@@ -37,6 +37,8 @@ export interface GameSettings {
   multiKillMode: boolean;
   /** Broadcast deaths with Korean role name */
   announcementMode: boolean;
+  /** Doctor may self-heal any night; if false only round 1 is allowed */
+  doctorSelfHealEnabled: boolean;
   nightTimerSec: number;
   dayTimerSec: number;
   vote1TimerSec: number;
@@ -75,6 +77,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   teamKillMode: false,
   multiKillMode: false,
   announcementMode: true,
+  doctorSelfHealEnabled: false,
   nightTimerSec: 30,
   dayTimerSec: 60,
   vote1TimerSec: 30,
